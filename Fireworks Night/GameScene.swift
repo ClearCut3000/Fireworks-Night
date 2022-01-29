@@ -12,6 +12,8 @@ class GameScene: SKScene {
   //MARK: - Properties
   var gameTimer: Timer?
   var fireworks = [SKNode]()
+  var scoreLabel: SKLabelNode!
+  var roundLabel: SKLabelNode!
 
   let leftEdge = -22
   let bottomEdge = -22
@@ -19,10 +21,16 @@ class GameScene: SKScene {
 
   var score = 0 {
     didSet {
-      //code
+      scoreLabel.text = "Score: \(score)"
+    }
+  }
+  var round = 1 {
+    didSet {
+      roundLabel.text = "Round: \(round)"
     }
   }
 
+  //MARK: - UIScene
   override func didMove(to view: SKView) {
     let background = SKSpriteNode(imageNamed: "background")
     background.position = CGPoint(x: 512, y: 384)
@@ -30,9 +38,22 @@ class GameScene: SKScene {
     background.zPosition = -1
     addChild(background)
 
+    scoreLabel = SKLabelNode(fontNamed: "Chalkduster")
+    scoreLabel.horizontalAlignmentMode = .left
+    scoreLabel.position = CGPoint(x: 50, y: 50)
+    scoreLabel.text = "Score: 0"
+    addChild(scoreLabel)
+
+    roundLabel = SKLabelNode(fontNamed: "Chalkduster")
+    roundLabel.horizontalAlignmentMode = .left
+    roundLabel.position = CGPoint(x: 800, y: 50)
+    roundLabel.text = "Round: 1"
+    addChild(roundLabel)
+
     gameTimer = Timer.scheduledTimer(timeInterval: 6, target: self, selector: #selector(launchFireworks), userInfo: nil, repeats: true)
   }
 
+  //MARK: - UIMethods
   func createFirework(xMovement:CGFloat, x: Int, y: Int) {
     let node = SKNode()
     node.position = CGPoint(x: x, y: y)
@@ -61,14 +82,17 @@ class GameScene: SKScene {
       emitter.position = CGPoint(x: 0, y: -22)
       node.addChild(emitter)
     }
-
     fireworks.append(node)
     addChild(node)
   }
 
   @objc func launchFireworks() {
+    if round >= 10 {
+      gameOver()
+    } else {
+      round += 1
+    }
     let movementAmount: CGFloat = 1800
-
     switch Int.random(in: 0...3) {
     case 0:
       createFirework(xMovement: 0, x: 512, y: bottomEdge)
@@ -99,45 +123,18 @@ class GameScene: SKScene {
     }
   }
 
-  func chechTouches(_ touches: Set<UITouch>) {
-    guard let touch = touches.first else { return }
-
-    let location = touch.location(in: self)
-    let nodesAtPoint = nodes(at: location)
-
-    for case let node as SKSpriteNode in nodesAtPoint {
-      guard node.name == "firework" else { continue }
-
-      for parent in fireworks {
-        guard let firework = parent.children.first as? SKSpriteNode else { continue }
-        if firework.name == "selected" && firework.color != node.color {
-          firework.name = "firework"
-          firework.colorBlendFactor = 1
-        }
-      }
-
-      node.name = "selected"
-      node.colorBlendFactor = 0
-
-    }
-  }
-
-  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-    super.touchesBegan(touches, with: event)
-    chechTouches(touches)
-  }
-
-  override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-    super.touchesMoved(touches, with: event)
-    chechTouches(touches)
-  }
-
-  override func update(_ currentTime: TimeInterval) {
-    for (index, firework) in fireworks.enumerated().reversed() {
-      if firework.position.y > 900 {
-        fireworks.remove(at:index)
-        firework.removeFromParent()
-      }
+  func gameOver() {
+    gameTimer?.invalidate()
+    let alert = UIAlertController(title: "Game Over, bro!", message: nil, preferredStyle: .alert)
+    alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+    alert.addAction(UIAlertAction(title: "Restart Game", style: .default, handler: { [self] (_) in
+      score = 0
+      round = 1
+      fireworks.removeAll()
+      gameTimer = Timer.scheduledTimer(timeInterval: 6, target: self, selector: #selector(launchFireworks), userInfo: nil, repeats: true)
+    }))
+    DispatchQueue.main.async {
+      self.view?.window?.rootViewController?.present(alert, animated: true)
     }
   }
 
@@ -145,13 +142,15 @@ class GameScene: SKScene {
     if let emitter = SKEmitterNode(fileNamed: "explode") {
       emitter.position = firework.position
       addChild(emitter)
+      let removeAction = SKAction.run { emitter.removeFromParent() }
+      let waitAction = SKAction.wait(forDuration: 2.0)
+      emitter.run(SKAction.sequence([waitAction, removeAction]))
     }
     firework.removeFromParent()
   }
 
   func explodeFireworks() {
     var numExploded = 0
-
     for (index, fireworkContainer) in fireworks.enumerated().reversed() {
       guard let firework = fireworkContainer.children.first as? SKSpriteNode else { continue }
       if firework.name == "selected" {
@@ -173,6 +172,47 @@ class GameScene: SKScene {
       score += 2500
     default:
       score += 4000
+    }
+  }
+
+  //MARK: - UITouches methods
+  override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+    super.touchesBegan(touches, with: event)
+    chechTouches(touches)
+  }
+
+  override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+    super.touchesMoved(touches, with: event)
+    chechTouches(touches)
+  }
+
+  override func update(_ currentTime: TimeInterval) {
+    for (index, firework) in fireworks.enumerated().reversed() {
+      if firework.position.y > 900 {
+        fireworks.remove(at:index)
+        firework.removeFromParent()
+      }
+    }
+  }
+
+  func chechTouches(_ touches: Set<UITouch>) {
+    guard let touch = touches.first else { return }
+
+    let location = touch.location(in: self)
+    let nodesAtPoint = nodes(at: location)
+
+    for case let node as SKSpriteNode in nodesAtPoint {
+      guard node.name == "firework" else { continue }
+
+      for parent in fireworks {
+        guard let firework = parent.children.first as? SKSpriteNode else { continue }
+        if firework.name == "selected" && firework.color != node.color {
+          firework.name = "firework"
+          firework.colorBlendFactor = 1
+        }
+      }
+      node.name = "selected"
+      node.colorBlendFactor = 0
     }
   }
 }
